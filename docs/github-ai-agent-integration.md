@@ -6,7 +6,7 @@ This guide describes the Forward Auth regression automation layer that runs Kara
 
 Add these in GitHub under **Settings > Secrets and variables > Actions**.
 
-Required for live Anthropic analysis:
+Required for primary live Anthropic analysis:
 
 - Secret `ANTHROPIC_API_KEY`: server-side key used only inside GitHub Actions or local shells.
 
@@ -48,12 +48,16 @@ The workflow intentionally continues after a test failure so reviewers get diagn
 
 The runner uses XML-tagged prompt context and temperature `0` for root-cause analysis. It never requires provider keys to produce a PR-safe markdown comment.
 
+Local CLI runs load `app/.env` automatically when it exists, but only for variables that are not already set in the process. This keeps GitHub Actions secrets and explicit shell exports authoritative while allowing local `GEMINI_API_KEY` or `ANTHROPIC_API_KEY` values to power `scripts/agent_runner.py`.
+
 The walkthrough CLI uses the same conceptual cascade for demos:
 
 ```bash
 python scripts/walkthrough_cli.py
 python scripts/walkthrough_cli.py --fast
 ```
+
+It also reads `app/.env` without overriding existing environment variables, so a local Gemini key can drive the fallback route during demos without committing secrets.
 
 ## PR Comments
 
@@ -152,4 +156,10 @@ npm run dev
 npm run agent:server
 ```
 
-Keep `.env` local and uncommitted. Use `.env.example` only as a placeholder template.
+The Node API uses the same server-side provider order for the live site:
+
+1. Anthropic primary when `ANTHROPIC_API_KEY` is set and the request succeeds.
+2. Gemini fallback when `GEMINI_API_KEY` is set and Anthropic is missing or fails.
+3. Browser local deterministic fallback when the API route is unavailable or no provider route succeeds.
+
+The API response includes `provider` and `source`, and the React console displays that route instead of assuming every live result is Anthropic. Keep `.env` local and uncommitted. Use `.env.example` only as a placeholder template.
