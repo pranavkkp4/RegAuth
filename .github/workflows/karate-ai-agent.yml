@@ -1,0 +1,138 @@
+name: Karate Tests & AI Root Cause Analysis
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  karate-ai-agent:
+    name: Karate regression and AI root cause
+    runs-on: ubuntu-latest
+    env:
+      KARATE_TEST_RUNNER: ForwardAuthRunner
+      REG_AUTH_FEEDBACK_FILE: knowledge/regauth-feedback.md
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then
+            python -m pip install -r requirements.txt
+          fi
+
+      - name: Run Karate tests
+        id: karate
+        shell: bash
+        run: |
+          mkdir -p target/karate-reports
+
+          if [ ! -f pom.xml ]; then
+            {
+              echo "No pom.xml was found in this repository."
+              echo "Skipping Maven/Karate execution while still allowing the AI agent workflow to validate."
+            } | tee target/karate-reports/karate-skip.log
+            echo "failed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          set +e
+          mvn -B test \
+            -Dtest="${KARATE_TEST_RUNNER}" \
+            -Dkarate.options="--tags ~@ignore" \
+            2>&1 | tee target/karate-reports/maven-karate.log
+          status=${PIPESTATUS[0]}
+          set -e
+
+          if [ "$status" -ne 0 ]; then
+            echo "failed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "failed=false" >> "$GITHUB_OUTPUT"
+          fi
+          exit 0
+
+      - name: Run AI root-cause agent
+        if: steps.karate.outputs.failed == 'true'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ANTHROPIC_MODEL: ${{ vars.ANTHROPIC_MODEL || 'claude-sonnet-4-20250514' }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_MODEL: ${{ vars.GEMINI_MODEL || 'gemini-1.5-flash' }}
+        run: |
+          python scripts/agent_runner.py \
+            --log-dir target/karate-reports \
+            --output target/karate-ai-agent-summary.md \
+            --feedback-file "${REG_AUTH_FEEDBACK_FILE}"
+
+      - name: Post AI agent PR comment
+        if: steps.karate.outputs.failed == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = 'target/karate-ai-agent-summary.md';
+            const marker = '<!-- regauth-ai-agent -->';
+            const body = fs.existsSync(path)
+              ? fs.readFileSync(path, 'utf8')
+              : `${marker}\n## Forward Auth AI Agent Root-Cause Summary\n\nThe agent did not produce an output file.`;
+
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              per_page: 100,
+            });
+
+            const previous = comments.find((comment) =>
+              comment.user.type === 'Bot' && comment.body.includes(marker)
+            );
+
+            if (previous) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: previous.id,
+                body,
+              });
+              return;
+            }
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body,
+            });
+
+      - name: Upload Karate and agent artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: karate-ai-agent-artifacts
+          path: |
+            target/karate-reports/**
+            target/karate-ai-agent-summary.md
+            knowledge/regauth-feedback.md
+          if-no-files-found: ignore
+
+      - name: Fail job when Karate failed
+        if: steps.karate.outputs.failed == 'true'
+        run: exit 1
