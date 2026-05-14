@@ -1,73 +1,110 @@
-# React + TypeScript + Vite
+# RegAuth App
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+React + TypeScript + Vite site for the Forward Auth regression architecture and Claude Code/Karate triage workflow.
 
-Currently, two official plugins are available:
+## Local Development
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+Install dependencies, then run the Vite app:
 
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm install
+npm run dev
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+## Live Anthropic Agent API
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+The browser never reads `ANTHROPIC_API_KEY`. Live Claude calls go through a small local Node API at `server/agent-server.mjs`.
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+1. Copy `.env.example` to `.env` and set `ANTHROPIC_API_KEY`.
+2. Keep `VITE_AGENT_API_URL=http://localhost:3001/api/agent` for local development.
+3. Start Vite in one terminal and the API server in another:
+
+```bash
+npm run dev
+npm run agent:server
 ```
+
+If the endpoint is unavailable, the key is missing, or Anthropic returns an error, `AgentConsole` falls back to the deterministic local triage rules in `src/lib/agentTriage.ts`.
+
+## Anthropic Request Strategy
+
+The backend uses the Messages API as a stateless call, sending the current failure log and workflow each run. Static system and taxonomy reference blocks are XML-tagged and marked with ephemeral prompt caching. The response is shaped through native Anthropic tool use with a constrained JSON schema, then returned with input/output token counts plus `cache_creation_input_tokens` and `cache_read_input_tokens`.
+
+Assistant prefill is intentionally not used because support varies on newer models. Structured tool output is the default path. Temperature is `0` for classification, isolation, and validation, with a small increase for Karate authoring.
+
+## Validation
+
+```bash
+npm run lint
+npm run build
+```
+
+## GitHub Actions Karate AI Agent
+
+The workflow at `.github/workflows/karate-ai-agent.yml` runs on pull requests targeting `main`.
+
+Full setup and operating notes are in [`docs/github-ai-agent-integration.md`](docs/github-ai-agent-integration.md).
+
+Repository setup:
+
+1. Add `ANTHROPIC_API_KEY` as a GitHub repository secret.
+2. Optionally add `ANTHROPIC_MODEL` as a repository variable. The default is `claude-sonnet-4-20250514`.
+3. Optionally add `GEMINI_API_KEY` as a repository secret and `GEMINI_MODEL` as a variable for fallback analysis.
+4. Keep `.env` local only. `.env.example` contains placeholders and should never contain real keys.
+
+Workflow behavior:
+
+- Sets up Java 17 and Python 3.11.
+- Installs Python dependencies from `requirements.txt`.
+- Runs `mvn -B test -Dtest=ForwardAuthRunner -Dkarate.options="--tags ~@ignore"` when `pom.xml` exists.
+- Skips Maven gracefully when this Vite-only repo has no `pom.xml`.
+- Continues after Karate failure so logs can be analyzed.
+- Runs `scripts/agent_runner.py` only when Karate fails, using Anthropic primary, Gemini fallback, and local deterministic failsafe routing.
+- Retrieves matching feedback snippets from `knowledge/regauth-feedback.md` when the file exists.
+- Posts or updates the generated markdown root-cause summary as a PR comment.
+- Uploads Karate reports and agent output as workflow artifacts.
+- Fails the job at the end when Karate failed, after the agent has commented.
+
+You can run the agent locally against any report directory:
+
+```bash
+python scripts/agent_runner.py --log-dir target/karate-reports --output target/karate-ai-agent-summary.md
+```
+
+To include feedback retrieval locally:
+
+```bash
+python scripts/agent_runner.py \
+  --log-dir target/karate-reports \
+  --output target/karate-ai-agent-summary.md \
+  --feedback-file knowledge/regauth-feedback.md
+```
+
+To append a compact reviewed feedback record, opt in explicitly:
+
+```bash
+python scripts/agent_runner.py \
+  --log-dir target/karate-reports \
+  --output target/karate-ai-agent-summary.md \
+  --feedback-file knowledge/regauth-feedback.md \
+  --save-feedback
+```
+
+If `ANTHROPIC_API_KEY` is available in the environment, the runner calls Anthropic's Messages API server-side with XML prompt tags, cached system/reference blocks, constrained native tool schemas, and temperature `0`. If Anthropic is unavailable and `GEMINI_API_KEY` is set, it tries Gemini. If provider calls are unavailable, it writes a deterministic local analysis instead of failing the CI comment path.
+
+## Terminal Walkthrough CLI
+
+Install the optional presentation dependency, then run the interactive walkthrough:
+
+```bash
+python -m pip install -r requirements.txt
+python scripts/walkthrough_cli.py
+```
+
+For quick rehearsal or CI smoke checks:
+
+```bash
+python scripts/walkthrough_cli.py --fast
+```
+
+The walkthrough demonstrates Forward Auth log capture, XML evidence preservation, Anthropic primary routing, Gemini fallback routing, simulation failsafe behavior, and a suggested Karate fix. If Rich is not installed, it falls back to a plain ANSI terminal presentation.
