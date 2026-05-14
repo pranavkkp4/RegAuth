@@ -5,7 +5,8 @@ import { resolve } from 'node:path';
 const PORT = Number(process.env.AGENT_SERVER_PORT ?? 3001);
 const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
 const ANTHROPIC_VERSION = '2023-06-01';
-const DEFAULT_MODEL = 'claude-sonnet-4-20250514';
+const DEFAULT_ANTHROPIC_MODEL = 'claude-sonnet-4-20250514';
+const DEFAULT_GEMINI_MODEL = 'gemini-1.5-flash';
 const WORKFLOWS = new Set(['classify', 'author', 'isolate', 'validate']);
 const CATEGORIES = [
   'Data fixture drift',
@@ -174,7 +175,7 @@ function buildUserPrompt({ log, workflow }) {
 
 function buildAnthropicRequest({ log, workflow }) {
   return {
-    model: process.env.ANTHROPIC_MODEL || DEFAULT_MODEL,
+    model: process.env.ANTHROPIC_MODEL || DEFAULT_ANTHROPIC_MODEL,
     max_tokens: 1400,
     temperature: temperatureForWorkflow(workflow),
     system: buildSystemBlocks(),
@@ -195,6 +196,32 @@ function buildAnthropicRequest({ log, workflow }) {
       },
     ],
   };
+}
+
+function buildGeminiPrompt({ log, workflow }) {
+  return [
+    '<system>',
+    'You are the RegAuth failure triage engine for a Claude Code and Karate regression workflow.',
+    'Classify failures from logs, produce engineer-reviewable recommendations, and never claim a product regression without evidence.',
+    'Return strict JSON only. Do not wrap the JSON in markdown.',
+    '</system>',
+    '<taxonomy_reference>',
+    ...CATEGORIES.map((category) => `<category>${category}</category>`),
+    '</taxonomy_reference>',
+    buildUserPrompt({ log, workflow }),
+    '<json_schema>',
+    JSON.stringify({
+      category: CATEGORIES,
+      confidence: 'integer 0-100',
+      signals: ['1-5 direct evidence strings'],
+      hypothesis: 'string',
+      slashCommand: 'string',
+      recommendation: 'string',
+      karateSketch: 'string',
+      validationPlan: ['3-6 validation steps'],
+    }),
+    '</json_schema>',
+  ].join('\n');
 }
 
 function escapeXml(value) {
@@ -229,6 +256,42 @@ function parseTriageResult(message) {
       'Run the standard regression CI gate before adoption.',
     ]),
   };
+}
+
+function parseGeminiResult(message) {
+  const text = message.candidates?.[0]?.content?.parts
+    ?.map((part) => (typeof part.text === 'string' ? part.text : ''))
+    .join('\n')
+    .trim();
+
+  if (!text) {
+    throw new Error('Gemini did not return triage text.');
+  }
+
+  const result = parseJsonText(text);
+  if (!CATEGORIES.includes(result.category)) {
+    throw new Error('Gemini returned an unknown taxonomy category.');
+  }
+
+  return {
+    category: result.category,
+    confidence: clampInteger(result.confidence, 0, 100),
+    signals: sanitizeStringArray(result.signals, ['Gemini did not return explicit evidence signals.']),
+    hypothesis: sanitizeString(result.hypothesis),
+    slashCommand: sanitizeString(result.slashCommand),
+    recommendation: sanitizeString(result.recommendation),
+    karateSketch: sanitizeString(result.karateSketch),
+    validationPlan: sanitizeStringArray(result.validationPlan, [
+      'Reproduce the failure from a clean checkout.',
+      'Validate setup ownership and test data isolation.',
+      'Run the standard regression CI gate before adoption.',
+    ]),
+  };
+}
+
+function parseJsonText(text) {
+  const trimmed = text.trim().replace(/^```(?:json)?/i, '').replace(/```$/i, '').trim();
+  return JSON.parse(trimmed);
 }
 
 function sanitizeString(value) {
@@ -267,6 +330,111 @@ async function readJsonBody(request) {
   return body ? JSON.parse(body) : {};
 }
 
+async function callAnthropic({ log, workflow }) {
+  const anthropicRequest = buildAnthropicRequest({ log, workflow });
+  const headers = {
+    'content-type': 'application/json',
+    'x-api-key': process.env.ANTHROPIC_API_KEY,
+    'anthropic-version': ANTHROPIC_VERSION,
+  };
+
+  if (process.env.ANTHROPIC_BETA) {
+    headers['anthropic-beta'] = process.env.ANTHROPIC_BETA;
+  }
+
+  const anthropicResponse = await fetch(ANTHROPIC_API_URL, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(anthropicRequest),
+  });
+
+  const message = await anthropicResponse.json();
+  if (!anthropicResponse.ok) {
+    throw new Error(message.error?.message || `Anthropic request failed with HTTP ${anthropicResponse.status}.`);
+  }
+
+  const usage = message.usage || {};
+  const cacheCreationInputTokens = usage.cache_creation_input_tokens || 0;
+  const cacheReadInputTokens = usage.cache_read_input_tokens || 0;
+
+  return {
+    result: parseTriageResult(message),
+    provider: 'Anthropic',
+    source: 'Anthropic primary',
+    model: message.model || anthropicRequest.model,
+    usage: {
+      inputTokens: usage.input_tokens || 0,
+      outputTokens: usage.output_tokens || 0,
+      cacheCreationInputTokens,
+      cacheReadInputTokens,
+    },
+    cache: {
+      creationInputTokens: cacheCreationInputTokens,
+      readInputTokens: cacheReadInputTokens,
+    },
+    caveats: [
+      'Messages API calls are stateless; the server sends the full task context each request.',
+      'Assistant prefill is intentionally not used because newer models may not support it; structured tool output is preferred.',
+    ],
+  };
+}
+
+async function callGemini({ log, workflow }) {
+  const model = process.env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL;
+  const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
+    model
+  )}:generateContent?key=${encodeURIComponent(process.env.GEMINI_API_KEY)}`;
+  const geminiRequest = {
+    contents: [
+      {
+        role: 'user',
+        parts: [{ text: buildGeminiPrompt({ log, workflow }) }],
+      },
+    ],
+    generationConfig: {
+      temperature: temperatureForWorkflow(workflow),
+      maxOutputTokens: 1400,
+      responseMimeType: 'application/json',
+    },
+  };
+
+  const geminiResponse = await fetch(geminiUrl, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(geminiRequest),
+  });
+
+  const message = await geminiResponse.json();
+  if (!geminiResponse.ok) {
+    throw new Error(message.error?.message || `Gemini request failed with HTTP ${geminiResponse.status}.`);
+  }
+
+  const usage = message.usageMetadata || {};
+  const inputTokens = usage.promptTokenCount || 0;
+  const outputTokens = usage.candidatesTokenCount || 0;
+
+  return {
+    result: parseGeminiResult(message),
+    provider: 'Gemini',
+    source: 'Gemini fallback',
+    model,
+    usage: {
+      inputTokens,
+      outputTokens,
+      cacheCreationInputTokens: 0,
+      cacheReadInputTokens: 0,
+    },
+    cache: {
+      creationInputTokens: 0,
+      readInputTokens: 0,
+    },
+    caveats: [
+      'Gemini was used because Anthropic was not configured or the Anthropic route failed.',
+      'The browser still receives only the structured triage response; provider keys remain server-side.',
+    ],
+  };
+}
+
 function sendJson(response, statusCode, payload) {
   response.writeHead(statusCode, {
     'Content-Type': 'application/json',
@@ -288,11 +456,6 @@ async function handleAgentRequest(request, response) {
     return;
   }
 
-  if (!process.env.ANTHROPIC_API_KEY) {
-    sendJson(response, 503, { error: 'ANTHROPIC_API_KEY is not configured.' });
-    return;
-  }
-
   const body = await readJsonBody(request);
   const log = typeof body.log === 'string' ? body.log.trim() : '';
   const workflow = WORKFLOWS.has(body.workflow) ? body.workflow : 'classify';
@@ -302,53 +465,34 @@ async function handleAgentRequest(request, response) {
     return;
   }
 
-  const anthropicRequest = buildAnthropicRequest({ log, workflow });
-  const headers = {
-    'content-type': 'application/json',
-    'x-api-key': process.env.ANTHROPIC_API_KEY,
-    'anthropic-version': ANTHROPIC_VERSION,
-  };
-
-  if (process.env.ANTHROPIC_BETA) {
-    headers['anthropic-beta'] = process.env.ANTHROPIC_BETA;
+  const errors = [];
+  if (process.env.ANTHROPIC_API_KEY) {
+    try {
+      sendJson(response, 200, await callAnthropic({ log, workflow }));
+      return;
+    } catch (error) {
+      errors.push(`Anthropic route failed: ${error instanceof Error ? error.message : 'unknown error'}`);
+    }
+  } else {
+    errors.push('ANTHROPIC_API_KEY was not set');
   }
 
-  const anthropicResponse = await fetch(ANTHROPIC_API_URL, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(anthropicRequest),
-  });
-
-  const message = await anthropicResponse.json();
-  if (!anthropicResponse.ok) {
-    sendJson(response, anthropicResponse.status, {
-      error: message.error?.message || 'Anthropic request failed.',
-    });
-    return;
+  if (process.env.GEMINI_API_KEY) {
+    try {
+      const payload = await callGemini({ log, workflow });
+      payload.fallbackReason = errors.join('; ');
+      sendJson(response, 200, payload);
+      return;
+    } catch (error) {
+      errors.push(`Gemini route failed: ${error instanceof Error ? error.message : 'unknown error'}`);
+    }
+  } else {
+    errors.push('GEMINI_API_KEY was not set');
   }
 
-  const result = parseTriageResult(message);
-  const usage = message.usage || {};
-  const cacheCreationInputTokens = usage.cache_creation_input_tokens || 0;
-  const cacheReadInputTokens = usage.cache_read_input_tokens || 0;
-
-  sendJson(response, 200, {
-    result,
-    model: message.model || anthropicRequest.model,
-    usage: {
-      inputTokens: usage.input_tokens || 0,
-      outputTokens: usage.output_tokens || 0,
-      cacheCreationInputTokens,
-      cacheReadInputTokens,
-    },
-    cache: {
-      creationInputTokens: cacheCreationInputTokens,
-      readInputTokens: cacheReadInputTokens,
-    },
-    caveats: [
-      'Messages API calls are stateless; the server sends the full task context each request.',
-      'Assistant prefill is intentionally not used because newer models may not support it; structured tool output is preferred.',
-    ],
+  sendJson(response, 503, {
+    error: 'No live provider route succeeded. Use browser local fallback.',
+    fallbackReason: errors.join('; '),
   });
 }
 
