@@ -10,6 +10,7 @@ import sys
 import textwrap
 import time
 from dataclasses import dataclass
+from pathlib import Path
 
 
 try:
@@ -82,7 +83,24 @@ KARATE_FIX = """Feature: Forward Auth isolated approval path
 """
 
 
+def load_local_env() -> None:
+    env_path = Path(__file__).resolve().parents[1] / ".env"
+    if not env_path.exists():
+        return
+
+    for raw_line in env_path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, raw_value = line.split("=", 1)
+        key = key.strip()
+        value = raw_value.strip().strip("'\"")
+        if key and key not in os.environ:
+            os.environ[key] = value
+
+
 def main() -> int:
+    load_local_env()
     parser = argparse.ArgumentParser(description="Run the Forward Auth AI Agent terminal walkthrough.")
     parser.add_argument("--fast", action="store_true", help="Skip pauses and animations for quick rehearsals.")
     args = parser.parse_args()

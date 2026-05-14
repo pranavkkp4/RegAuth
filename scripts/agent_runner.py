@@ -46,6 +46,22 @@ REPORT_PATTERNS = (
 )
 
 
+def load_local_env() -> None:
+    env_path = Path(__file__).resolve().parents[1] / ".env"
+    if not env_path.exists():
+        return
+
+    for raw_line in env_path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, raw_value = line.split("=", 1)
+        key = key.strip()
+        value = raw_value.strip().strip("'\"")
+        if key and key not in os.environ:
+            os.environ[key] = value
+
+
 @dataclass
 class ReportFile:
     path: Path
@@ -111,6 +127,7 @@ FAILURE_RULES = [
 
 
 def main() -> int:
+    load_local_env()
     args = parse_args()
     log_dir = Path(args.log_dir)
     output_path = Path(args.output)
