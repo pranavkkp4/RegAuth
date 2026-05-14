@@ -16,6 +16,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from regauth_pipeline import DEFAULT_SELF_HEAL_TARGET, build_multi_agent_contract
+
 
 ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages"
 ANTHROPIC_VERSION = "2023-06-01"
@@ -138,10 +140,33 @@ def main() -> int:
     retrieved_feedback = retrieve_feedback(feedback_path, failure_text) if feedback_path else []
     prompt = build_prompt(reports, log_dir, retrieved_feedback)
     result = run_agent(prompt, reports, retrieved_feedback)
-    markdown = render_markdown(result, reports, log_dir, feedback_path)
+    multi_agent = build_multi_agent_contract(
+        result_to_dict(result),
+        reports,
+        workflow=args.workflow,
+        confidence_threshold=args.confidence_threshold,
+        target_file=args.self_heal_target_file,
+    ) if args.multi_agent else None
+    markdown = render_markdown(result, reports, log_dir, feedback_path, multi_agent)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(markdown, encoding="utf-8")
+
+    if args.emit_json:
+        emit_path = Path(args.emit_json)
+        emit_path.parent.mkdir(parents=True, exist_ok=True)
+        emit_path.write_text(
+            json.dumps(
+                {
+                    "result": result_to_dict(result),
+                    "multi_agent": multi_agent,
+                    "reports": [report_to_dict(report) for report in reports],
+                    "feedback_file": str(feedback_path) if feedback_path else None,
+                },
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
 
     if args.save_feedback:
         if not feedback_path:
@@ -150,6 +175,8 @@ def main() -> int:
         print(f"Saved compact feedback record to {feedback_path}")
 
     print(f"Wrote AI agent summary to {output_path}")
+    if args.emit_json:
+        print(f"Wrote structured agent contract to {args.emit_json}")
     print(f"Agent mode: {result.source}")
     if result.error:
         print(f"Agent fallback reason: {result.error}", file=sys.stderr)
@@ -174,6 +201,32 @@ def parse_args() -> argparse.Namespace:
         "--save-feedback",
         action="store_true",
         help="Append a compact diagnosis record to --feedback-file. Off by default for CI safety.",
+    )
+    parser.add_argument(
+        "--workflow",
+        choices=["classify", "author", "isolate", "validate", "mock", "prune", "self-heal"],
+        default="classify",
+        help="Contract workflow label used for the multi-agent envelope.",
+    )
+    parser.add_argument(
+        "--multi-agent",
+        action="store_true",
+        help="Add Diagnostician, Payments Domain Expert, Karate Coder, Mock Generator, Pruner, and Self-Heal Gate sections.",
+    )
+    parser.add_argument(
+        "--emit-json",
+        help="Optional structured JSON output for self-healing, mock generation, and downstream automation.",
+    )
+    parser.add_argument(
+        "--confidence-threshold",
+        type=int,
+        default=90,
+        help="Minimum confidence required before self-healing can open a draft PR.",
+    )
+    parser.add_argument(
+        "--self-heal-target-file",
+        default=DEFAULT_SELF_HEAL_TARGET,
+        help="Allowlisted Karate feature path to use for generated self-healing patches.",
     )
     return parser.parse_args()
 
@@ -547,11 +600,40 @@ def local_analysis(
     )
 
 
+def result_to_dict(result: AgentResult) -> dict[str, Any]:
+    return {
+        "category": result.category,
+        "confidence": result.confidence,
+        "signals": result.signals,
+        "hypothesis": result.hypothesis,
+        "suggested_fix": result.suggested_fix,
+        "karate_patch": result.karate_patch,
+        "validation_plan": result.validation_plan,
+        "source": result.source,
+        "model": result.model,
+        "token_usage": result.token_usage,
+        "error": result.error,
+        "retrieved_feedback": [
+            {"title": snippet.title, "text": snippet.text, "score": snippet.score}
+            for snippet in result.retrieved_feedback
+        ],
+    }
+
+
+def report_to_dict(report: ReportFile) -> dict[str, Any]:
+    return {
+        "path": str(report.path),
+        "text": report.text,
+        "truncated": report.truncated,
+    }
+
+
 def render_markdown(
     result: AgentResult,
     reports: list[ReportFile],
     log_dir: Path,
     feedback_path: Path | None,
+    multi_agent: dict[str, Any] | None = None,
 ) -> str:
     files = "\n".join(
         f"- `{report.path}`{' (truncated)' if report.truncated else ''}" for report in reports[:12]
@@ -585,6 +667,7 @@ def render_markdown(
             feedback_lines.append("- No relevant snippets matched this failure.")
 
     fallback_note = f"\n> Fallback note: {result.error}\n" if result.error else ""
+    multi_agent_section = render_multi_agent_markdown(multi_agent) if multi_agent else ""
 
     return "\n".join(
         [
@@ -623,6 +706,8 @@ def render_markdown(
             "",
             *[f"{index}. {item}" for index, item in enumerate(result.validation_plan, start=1)],
             "",
+            multi_agent_section.rstrip(),
+            "",
             "**Analyzed artifacts**",
             "",
             files or "- No report files found.",
@@ -632,6 +717,37 @@ def render_markdown(
             "",
         ]
     )
+
+
+def render_multi_agent_markdown(multi_agent: dict[str, Any]) -> str:
+    diagnosis = multi_agent.get("diagnostician", {})
+    domain = multi_agent.get("payments_domain_expert", {})
+    coder = multi_agent.get("karate_coder", {})
+    mock = multi_agent.get("mock_generator", {})
+    pruner = multi_agent.get("pruner", {})
+    self_heal = multi_agent.get("self_heal_gate", {})
+    decision = multi_agent.get("decision", {})
+    proposed = coder.get("proposed_changes") or []
+    mock_fixtures = mock.get("fixtures") or []
+    pruning_candidates = pruner.get("candidates") or []
+
+    lines = [
+        "**Multi-agent review**",
+        "",
+        f"- Decision: `{decision.get('action', 'comment_only')}` at `{decision.get('confidence', 0)}%` confidence.",
+        f"- Diagnostician: {diagnosis.get('technical_fault', 'No technical fault isolated.')}",
+        f"- First signal: {diagnosis.get('first_failing_signal', 'No first signal captured.')}",
+        f"- Payments domain expert: {len(domain.get('domain_findings') or [])} domain finding(s), synthetic fixture required.",
+        f"- Karate coder: `{coder.get('patch_type', 'no_patch')}` with {len(proposed)} proposed change(s).",
+        f"- Mock generator: {'eligible' if mock.get('eligible') else 'not eligible'}; {len(mock_fixtures)} fixture candidate(s).",
+        f"- Pruner: `{pruner.get('mode', 'recommend_only')}` with {len(pruning_candidates)} candidate(s).",
+        f"- Self-heal gate: `{self_heal.get('max_autonomy', 'comment_only')}`; eligible `{str(self_heal.get('eligible', False)).lower()}`.",
+        "",
+        "**Self-heal guardrails**",
+        "",
+    ]
+    lines.extend(f"- {reason}" for reason in self_heal.get("reasons", []))
+    return "\n".join(lines)
 
 
 def append_feedback_record(feedback_path: Path, result: AgentResult, reports: list[ReportFile]) -> None:
