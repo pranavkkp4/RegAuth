@@ -31,6 +31,9 @@ export default function AgentConsole() {
     [lastRun]
   );
   const result = liveResponse?.result ?? localResult;
+  const agentSourceLabel =
+    liveResponse?.source ??
+    (agentMode === 'fallback' ? 'Browser local fallback triage' : 'Browser local deterministic triage');
 
   const runAgent = async () => {
     const nextRun = {
@@ -131,16 +134,13 @@ export default function AgentConsole() {
         <div className="bg-[#F8FAFC] p-5 md:p-6">
           <div className="mb-4 rounded-lg border border-[#DDE3EE] bg-white px-4 py-3 text-sm text-[#475467]">
             <span className="font-semibold text-[#0B145A]">
-              {agentMode === 'live'
-                ? 'Live Anthropic triage'
-                : agentMode === 'fallback'
-                  ? 'Local fallback triage'
-                  : 'Local deterministic triage'}
+              {agentSourceLabel}
             </span>
             {liveResponse ? (
               <span className="ml-2">
-                {liveResponse.model} · input {liveResponse.usage.inputTokens} · output{' '}
-                {liveResponse.usage.outputTokens} · cache read{' '}
+                {liveResponse.provider} / {liveResponse.model} - input{' '}
+                {liveResponse.usage.inputTokens} - output {liveResponse.usage.outputTokens} -
+                cache read{' '}
                 {liveResponse.cache.readInputTokens}
               </span>
             ) : null}

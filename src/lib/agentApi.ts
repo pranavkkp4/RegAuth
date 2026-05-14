@@ -10,6 +10,8 @@ export type AgentUsageMetrics = {
 
 export type LiveAgentResponse = {
   result: AgentTriageResult;
+  provider: 'Anthropic' | 'Gemini';
+  source: 'Anthropic primary' | 'Gemini fallback';
   model: string;
   usage: AgentUsageMetrics;
   cache: {
@@ -17,6 +19,7 @@ export type LiveAgentResponse = {
     readInputTokens: number;
   };
   caveats: string[];
+  fallbackReason?: string;
 };
 
 type LiveAgentRequest = {
