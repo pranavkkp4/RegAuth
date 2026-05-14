@@ -1,6 +1,6 @@
 import type { AgentWorkflowId } from '../content/siteContent';
 
-type FailureCategory =
+export type FailureCategory =
   | 'Data fixture drift'
   | 'Environment readiness'
   | 'Assertion contract drift'

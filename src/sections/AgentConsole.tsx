@@ -7,30 +7,50 @@ import {
   agentWorkflowOptions,
   type AgentWorkflowId,
 } from '../content/siteContent';
+import type { LiveAgentResponse } from '../lib/agentApi';
+import { requestLiveAgentTriage } from '../lib/agentApi';
 import { triageFailureLog } from '../lib/agentTriage';
 
 const defaultWorkflow: AgentWorkflowId = 'classify';
+type AgentMode = 'local' | 'live' | 'fallback';
 
 export default function AgentConsole() {
   const [logInput, setLogInput] = useState(agentSampleFailures[0].log);
   const [workflow, setWorkflow] = useState<AgentWorkflowId>(defaultWorkflow);
   const [copied, setCopied] = useState(false);
+  const [isRunning, setIsRunning] = useState(false);
+  const [agentMode, setAgentMode] = useState<AgentMode>('local');
+  const [liveResponse, setLiveResponse] = useState<LiveAgentResponse | null>(null);
   const [lastRun, setLastRun] = useState({
     log: agentSampleFailures[0].log,
     workflow: defaultWorkflow,
   });
 
-  const result = useMemo(
+  const localResult = useMemo(
     () => triageFailureLog(lastRun.log, lastRun.workflow),
     [lastRun]
   );
+  const result = liveResponse?.result ?? localResult;
 
-  const runAgent = () => {
-    setLastRun({
+  const runAgent = async () => {
+    const nextRun = {
       log: logInput,
       workflow,
-    });
+    };
+    setLastRun(nextRun);
     setCopied(false);
+    setIsRunning(true);
+    setLiveResponse(null);
+
+    const response = await requestLiveAgentTriage(nextRun);
+    if (response) {
+      setLiveResponse(response);
+      setAgentMode('live');
+    } else {
+      setAgentMode('fallback');
+    }
+
+    setIsRunning(false);
   };
 
   const copyCommand = async () => {
@@ -99,15 +119,33 @@ export default function AgentConsole() {
             <Button
               type="button"
               onClick={runAgent}
+              disabled={isRunning}
               className="bg-[#1A1F71] text-white hover:bg-[#0B145A]"
             >
               <Play className="h-4 w-4" />
-              Run Agent
+              {isRunning ? 'Running' : 'Run Agent'}
             </Button>
           </div>
         </div>
 
         <div className="bg-[#F8FAFC] p-5 md:p-6">
+          <div className="mb-4 rounded-lg border border-[#DDE3EE] bg-white px-4 py-3 text-sm text-[#475467]">
+            <span className="font-semibold text-[#0B145A]">
+              {agentMode === 'live'
+                ? 'Live Anthropic triage'
+                : agentMode === 'fallback'
+                  ? 'Local fallback triage'
+                  : 'Local deterministic triage'}
+            </span>
+            {liveResponse ? (
+              <span className="ml-2">
+                {liveResponse.model} · input {liveResponse.usage.inputTokens} · output{' '}
+                {liveResponse.usage.outputTokens} · cache read{' '}
+                {liveResponse.cache.readInputTokens}
+              </span>
+            ) : null}
+          </div>
+
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <div className="rounded-lg border border-[#DDE3EE] bg-white p-4">
               <span className="font-mono text-xs uppercase tracking-[0.12em] text-[#667085]">
