@@ -53,7 +53,7 @@ export default function Hero() {
   }, [prefersReducedMotion]);
 
   const titleWords =
-    'RegAuth: Forward Auth Regression Test Robustness & AI-Assisted Test Authoring'.split(
+    'Forward Auth Regression Test Robustness & AI-Assisted Test Authoring'.split(
       ' '
     );
 
@@ -71,7 +71,7 @@ export default function Hero() {
         <div ref={kickerRef} className="mb-6 flex flex-wrap items-center gap-3">
           <span className="h-px w-10 bg-[#F7B600]" />
           <span className="font-mono text-xs font-medium uppercase tracking-[0.16em] text-[#1A1F71]">
-            Portfolio Case Study
+            Internship Reliability Engineering Project
           </span>
         </div>
 
@@ -95,8 +95,8 @@ export default function Hero() {
           className="font-body max-w-[760px] text-xl font-light leading-relaxed text-[#344054]"
         >
           A production-focused transformation of Forward Auth regression testing:
-          measurable reliability, deterministic execution, root-cause analysis,
-          and an engineer-in-the-loop Claude Code workflow for Karate authoring.
+          first-run reliability, deterministic execution, root-cause taxonomy,
+          and an engineer-in-the-loop Claude Code workflow for Karate test authoring.
         </p>
 
         <div ref={cardsRef} className="mt-12 grid grid-cols-1 gap-4 md:grid-cols-3">

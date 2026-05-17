@@ -63,15 +63,17 @@ export default function ProgramFocus() {
   }, [activeTab, prefersReducedMotion]);
 
   return (
-    <section ref={sectionRef} id="program" className="bg-white py-[96px] md:py-[120px]">
+    <section ref={sectionRef} id="objectives" className="bg-white py-[96px] md:py-[120px]">
       <div className="mx-auto max-w-[1400px] px-[4vw]">
         <div ref={headerRef} className="mb-10 max-w-[820px]">
-          <span className="section-eyebrow">Program Focus</span>
-          <h2 className="section-title mt-3">Five case-study pillars for production reliability.</h2>
+          <span className="section-eyebrow">Three Core Objectives</span>
+          <h2 className="section-title mt-3">
+            A focused reliability initiative with measurable engineering outcomes.
+          </h2>
         </div>
 
         <div ref={tabsRef} className="grid grid-cols-1 gap-8 lg:grid-cols-[380px_1fr]">
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-5 lg:grid-cols-1">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 lg:grid-cols-1">
             {programPillars.map((tab, index) => (
               <button
                 key={tab.title}

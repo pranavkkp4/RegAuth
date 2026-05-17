@@ -39,7 +39,7 @@ export default function ProductionDeliverables() {
           <h2 className="section-title mt-3">Artifacts built for maintainers, not demos.</h2>
         </div>
 
-        <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-5">
+        <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
           {productionDeliverables.map((card) => {
             const Icon = card.icon;
             return (

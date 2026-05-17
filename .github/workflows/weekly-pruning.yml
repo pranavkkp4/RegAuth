@@ -1,0 +1,46 @@
+name: Weekly Karate Suite Pruning Report
+
+on:
+  workflow_dispatch:
+    inputs:
+      test_root:
+        description: Directory to scan for Karate feature files
+        required: false
+        default: "."
+  schedule:
+    - cron: "0 13 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  pruning-report:
+    name: Analyze redundant Karate coverage
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Generate pruning recommendations
+        env:
+          TEST_ROOT: ${{ github.event.inputs.test_root || '.' }}
+        run: |
+          mkdir -p target
+          python scripts/test_suite_pruner.py \
+            --test-root "${TEST_ROOT}" \
+            --output target/test-suite-pruning.md \
+            --emit-json target/test-suite-pruning.json
+
+      - name: Upload pruning report
+        uses: actions/upload-artifact@v4
+        with:
+          name: regauth-test-suite-pruning
+          path: |
+            target/test-suite-pruning.md
+            target/test-suite-pruning.json
+          if-no-files-found: error

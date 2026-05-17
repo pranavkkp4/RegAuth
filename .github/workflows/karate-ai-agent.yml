@@ -6,7 +6,7 @@ on:
       - main
 
 permissions:
-  contents: read
+  contents: write
   pull-requests: write
 
 jobs:
@@ -16,6 +16,9 @@ jobs:
     env:
       KARATE_TEST_RUNNER: ForwardAuthRunner
       REG_AUTH_FEEDBACK_FILE: knowledge/regauth-feedback.md
+      SELF_HEAL_ENABLED: ${{ vars.ENABLE_SELF_HEALING_PRS || 'false' }}
+      SELF_HEAL_REVIEWER: ${{ vars.TEST_OWNER_REVIEWER || '' }}
+      SELF_HEAL_TARGET_FILE: ${{ vars.SELF_HEAL_TARGET_FEATURE || 'src/test/resources/features/regauth/generated-self-heal.feature' }}
 
     steps:
       - name: Check out repository
@@ -80,7 +83,44 @@ jobs:
           python scripts/agent_runner.py \
             --log-dir target/karate-reports \
             --output target/karate-ai-agent-summary.md \
-            --feedback-file "${REG_AUTH_FEEDBACK_FILE}"
+            --feedback-file "${REG_AUTH_FEEDBACK_FILE}" \
+            --multi-agent \
+            --workflow self-heal \
+            --emit-json target/regauth-agent-result.json \
+            --confidence-threshold 90 \
+            --self-heal-target-file "${SELF_HEAL_TARGET_FILE}"
+
+      - name: Generate downstream mock artifacts
+        if: steps.karate.outputs.failed == 'true'
+        run: |
+          python scripts/mock_generator.py \
+            --log-dir target/karate-reports \
+            --output-dir target/generated-mocks
+
+      - name: Prepare self-healing draft PR plan
+        if: steps.karate.outputs.failed == 'true'
+        run: |
+          python scripts/self_heal_pr.py \
+            --result-json target/regauth-agent-result.json \
+            --repo-root . \
+            --target-file "${SELF_HEAL_TARGET_FILE}" \
+            --reviewer "${SELF_HEAL_REVIEWER}" \
+            --plan-output target/self-heal-draft-pr.md \
+            --threshold 90
+
+      - name: Open self-healing draft PR when enabled
+        if: steps.karate.outputs.failed == 'true' && env.SELF_HEAL_ENABLED == 'true'
+        run: |
+          git config user.name "regauth-ai-agent"
+          git config user.email "regauth-ai-agent@users.noreply.github.com"
+          python scripts/self_heal_pr.py \
+            --result-json target/regauth-agent-result.json \
+            --repo-root . \
+            --target-file "${SELF_HEAL_TARGET_FILE}" \
+            --reviewer "${SELF_HEAL_REVIEWER}" \
+            --plan-output target/self-heal-draft-pr.md \
+            --threshold 90 \
+            --execute
 
       - name: Post AI agent PR comment
         if: steps.karate.outputs.failed == 'true'
@@ -130,6 +170,9 @@ jobs:
           path: |
             target/karate-reports/**
             target/karate-ai-agent-summary.md
+            target/regauth-agent-result.json
+            target/generated-mocks/**
+            target/self-heal-draft-pr.md
             knowledge/regauth-feedback.md
           if-no-files-found: ignore
 
