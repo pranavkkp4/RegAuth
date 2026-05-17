@@ -63,7 +63,7 @@ export default function Navigation({ lenisRef }: NavigationProps) {
         >
           RegAuth
         </button>
-        <div className="hidden items-center gap-6 md:flex">
+        <div className="hidden items-center gap-4 md:flex lg:gap-6">
           {navLinks.map((link) => {
             const sectionId = link.href.replace('#', '');
             const isActive = activeSection === sectionId;

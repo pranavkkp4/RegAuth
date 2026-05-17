@@ -8,6 +8,10 @@
     "agent:server": "node server/agent-server.mjs",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
+    "check": "npm run lint && npm run build",
+    "prepush:check": "node scripts/run-prepush-check.mjs",
+    "prepush:check:bash": "bash scripts/prepush-check.sh",
+    "hooks:install": "node scripts/install-git-hooks.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

@@ -9,7 +9,6 @@ import {
   FileCode2,
   Gauge,
   GitBranch,
-  Layers3,
   LineChart,
   ListChecks,
   Network,
@@ -59,20 +58,22 @@ export type AgentSampleFailure = {
 
 export const navLinks: NavItem[] = [
   { label: 'Problem', href: '#problem' },
+  { label: 'Objectives', href: '#objectives' },
   { label: 'Metrics', href: '#metrics' },
-  { label: 'Architecture', href: '#architecture' },
   { label: 'Agent', href: '#agent' },
+  { label: 'Isolation', href: '#isolation' },
+  { label: 'Safety', href: '#safety' },
   { label: 'Deliverables', href: '#deliverables' },
 ];
 
 export const sectionIds = [
   'hero',
   'problem',
+  'objectives',
   'metrics',
-  'architecture',
-  'program',
   'agent',
   'isolation',
+  'safety',
   'timeline',
   'deliverables',
   'resources',
@@ -81,35 +82,35 @@ export const sectionIds = [
 export const heroMetrics: CardItem[] = [
   {
     metric: '<5%',
-    title: 'Flaky Test Rate',
-    body: 'Target state for non-SQL Forward Auth regressions after isolation and failure classification.',
+    title: 'First-Run Flake Rate',
+    body: 'Target for non-SQL Forward Auth failures after root-cause reduction, not rerun masking.',
   },
   {
     metric: '100%',
-    title: 'Isolation Coverage',
-    body: 'Each scenario can run independently with deterministic setup, teardown, and data ownership.',
+    title: 'Independent Execution',
+    body: 'Any selected Karate scenario should run alone with deterministic setup, teardown, and data ownership.',
   },
   {
-    metric: '6-stage',
-    title: 'Failure Triage',
-    body: 'Instrumentation and taxonomy connect suite failures to agent-assisted remediation.',
+    metric: 'Human-gated',
+    title: 'AI Test Authoring',
+    body: 'Claude Code proposes Karate changes locally while engineers retain review, CI, and merge authority.',
   },
 ];
 
 export const engineeringProblemCards: CardItem[] = [
   {
-    title: 'Noisy Failures',
-    body: 'Flake and environment noise made real authorization regressions harder to isolate.',
+    title: 'Low Signal on First Run',
+    body: 'Flaky non-SQL failures diluted regression confidence and slowed release decisions.',
     icon: AlertTriangle,
   },
   {
-    title: 'Shared State',
-    body: 'Implicit data dependencies created tests that passed in sequence but failed alone.',
+    title: 'Hidden State Coupling',
+    body: 'Implicit data dependencies created Karate scenarios that passed in suite order but failed independently.',
     icon: DatabaseZap,
   },
   {
-    title: 'Slow Triage',
-    body: 'Logs needed classification before fixes, agent suggestions, or CI gates could be trusted.',
+    title: 'Unclassified Failures',
+    body: 'Logs needed failure classification before engineers could separate product defects from harness, data, and environment issues.',
     icon: Crosshair,
   },
 ];
@@ -117,86 +118,67 @@ export const engineeringProblemCards: CardItem[] = [
 export const reliabilityMetrics: CardItem[] = [
   {
     metric: '<5%',
-    title: 'Flaky Test Rate Target',
-    body: 'Drive recurring non-product failures below the threshold through root-cause fixes, not rerun masking.',
+    title: 'First-Run Reliability',
+    body: 'Reduce flaky non-SQL failures below the target by fixing root causes instead of hiding instability with reruns.',
     icon: Gauge,
   },
   {
-    metric: '100%',
-    title: 'Isolation Coverage',
-    body: 'Refactor coupled tests until setup, account state, and card data are owned by the scenario under test.',
+    metric: '0 hidden deps',
+    title: 'Deterministic Execution',
+    body: 'Track whether selected scenarios can execute independently without inherited account, token, card, or transaction state.',
     icon: ShieldCheck,
   },
   {
     metric: 'Taxonomy',
-    title: 'Failure Taxonomy',
+    title: 'Root-Cause Taxonomy',
     body: 'Classify failures by data, environment, framework, assertion, dependency, and true product regression.',
     icon: GitBranch,
   },
   {
-    metric: 'Eval set',
-    title: 'Agent Evaluation',
-    body: 'Measure Claude Code suggestions against historical failures before any engineer adopts generated changes.',
+    metric: 'CI gate',
+    title: 'Failure Classification',
+    body: 'Tie every remediation path to CI validation, branch protection, and engineer review before merge.',
     icon: ClipboardCheck,
   },
-];
-
-export const architectureFlow = [
-  'Regression Suite',
-  'Failure Instrumentation Layer',
-  'Failure Classifier',
-  'Root-Cause Taxonomy',
-  'Claude Code Karate Agent',
-  'Engineer Review + CI Validation',
 ];
 
 export const programPillars: CardItem[] = [
   {
     eyebrow: '01',
-    title: 'Measurement Discipline',
-    body: 'Baseline Forward Auth regression health with repeatable metrics, failure signatures, and trend reporting that separates product regressions from harness instability.',
+    title: 'Measurable Stability Improvements',
+    body: 'Reduce the Forward Auth regression suite flaky test rate to below 5% on first-run execution for non-SQL failures. The work emphasizes root-cause reduction, failure classification, and visible trend reporting instead of masking failures with reruns.',
   },
   {
     eyebrow: '02',
-    title: 'Root-Cause Taxonomy',
-    body: 'Convert raw logs and stack traces into a shared vocabulary for data, environment, assertion, dependency, framework, and service behavior failures.',
+    title: 'Claude Code Agent With Karate Skills',
+    body: 'Package a Claude Code toolkit for authoring new Karate tests, maintaining existing coverage, and debugging failures through CLAUDE.md guidance, reusable slash commands, test templates, and reviewable diagnostics.',
   },
   {
     eyebrow: '03',
-    title: 'Deterministic Execution',
-    body: 'Eliminate hidden ordering dependencies so every Karate scenario can run alone, in parallel, and in CI without inherited state.',
-  },
-  {
-    eyebrow: '04',
-    title: 'Engineer-In-The-Loop AI',
-    body: 'Design a Claude Code workflow that proposes Karate fixes, templates, and diagnostics while keeping engineers responsible for review and merge decisions.',
-  },
-  {
-    eyebrow: '05',
-    title: 'CI Validation',
-    body: 'Close the loop with gated validation: generated changes are checked against historical failure cases and confirmed by standard build pipelines.',
+    title: 'Production-Grade Test Isolation',
+    body: 'Make any selected test runnable independently by removing prior-state assumptions, formalizing setup and teardown, controlling deterministic test data, and checking environment readiness before execution.',
   },
 ];
 
 export const agentDesignCards: CardItem[] = [
   {
     title: 'CLAUDE.md',
-    body: 'Repository-local operating guidance covering Forward Auth context, Karate conventions, safe edit boundaries, and expected evidence before suggesting changes.',
+    body: 'Repository-local operating guidance covering Forward Auth context, Karate conventions, safe edit boundaries, and the evidence required before recommending changes.',
     icon: FileCode2,
   },
   {
     title: 'Slash Commands',
-    body: 'Task-specific commands for failure triage, scenario generation, log summarization, and deterministic setup checks.',
+    body: 'Task-specific commands for failure triage, scenario generation, log summarization, deterministic setup checks, and debug workflow handoffs.',
     icon: TerminalSquare,
   },
   {
-    title: 'Karate Templates',
-    body: 'Reusable feature, background, assertion, and data-fixture patterns that keep generated tests aligned with the suite architecture.',
+    title: 'Karate Test Templates',
+    body: 'Reusable feature, Background, assertion, data-fixture, setup, and teardown patterns that keep authored tests aligned with the suite architecture.',
     icon: Braces,
   },
   {
-    title: 'Historical Failure Evaluation',
-    body: 'An evaluation set built from known suite failures to score whether agent recommendations are accurate, scoped, and reviewable.',
+    title: 'Engineer-In-The-Loop AI',
+    body: 'Claude Code proposes local changes and explains tradeoffs, but engineers approve scope, run checks, open pull requests, and own merge decisions.',
     icon: Bot,
   },
 ];
@@ -254,18 +236,18 @@ export const agentSampleFailures: AgentSampleFailure[] = [
 
 export const isolationStrategyCards: CardItem[] = [
   {
-    title: 'State Ownership',
-    body: 'Scenarios create or reserve their own card, account, token, and transaction prerequisites instead of borrowing state from previous tests.',
-    icon: Layers3,
+    title: 'Explicit State Ownership',
+    body: 'Scenarios create, reserve, or validate their own card, account, token, and transaction prerequisites instead of borrowing state from previous tests.',
+    icon: ShieldCheck,
   },
   {
-    title: 'Deterministic Fixtures',
-    body: 'Static assumptions are replaced with explicit fixtures, setup APIs, and clear preconditions that make failures diagnosable.',
+    title: 'Deterministic Test Data',
+    body: 'Static assumptions are replaced with explicit fixtures, setup APIs, unique identifiers, teardown discipline, and clear preconditions.',
     icon: ListChecks,
   },
   {
-    title: 'Parallel Safety',
-    body: 'Shared pools, mutable identifiers, and cleanup routines are hardened so the suite can scale across CI workers without cross-test interference.',
+    title: 'Environment Readiness',
+    body: 'Dependency health, token freshness, configuration drift, and service availability are checked before failures are classified as product regressions.',
     icon: Split,
   },
 ];
@@ -273,9 +255,9 @@ export const isolationStrategyCards: CardItem[] = [
 export const timelineItems: TimelineItem[] = [
   {
     phase: 'Phase 01',
-    title: 'Baseline the Regression Surface',
+    title: 'Baseline First-Run Reliability',
     description:
-      'Map Forward Auth flows, identify high-volume Karate paths, and establish a reproducible instability baseline.',
+      'Map Forward Auth flows, identify high-volume Karate paths, and establish a reproducible non-SQL instability baseline.',
   },
   {
     phase: 'Phase 02',
@@ -297,16 +279,16 @@ export const timelineItems: TimelineItem[] = [
   },
   {
     phase: 'Phase 05',
-    title: 'Validate and Hand Off',
+    title: 'Validate, Protect, and Hand Off',
     description:
-      'Run historical evaluations, document operational runbooks, and hand over CI-ready deliverables to maintainers.',
+      'Run historical evaluations, document branch protection and CI validation expectations, and hand over production-ready deliverables.',
   },
 ];
 
 export const productionDeliverables: CardItem[] = [
   {
     title: 'Stability Dashboard',
-    body: 'A metrics view that tracks flaky rate, failure classes, isolation coverage, and recurring suite hotspots.',
+    body: 'A metrics view that tracks first-run flaky rate, failure classes, isolation coverage, and recurring suite hotspots.',
     icon: LineChart,
   },
   {
@@ -316,7 +298,7 @@ export const productionDeliverables: CardItem[] = [
   },
   {
     title: 'Karate Agent Toolkit',
-    body: 'Claude Code guidance, slash commands, prompts, and templates built for Forward Auth test authoring.',
+    body: 'CLAUDE.md guidance, slash commands, prompts, debug workflows, and templates built for Forward Auth test authoring.',
     icon: Bot,
   },
   {
@@ -326,8 +308,13 @@ export const productionDeliverables: CardItem[] = [
   },
   {
     title: 'Engineer Runbook',
-    body: 'Operating guidance for triage, agent usage, review expectations, CI validation, and long-term ownership.',
+    body: 'Operating guidance for triage, agent usage, review expectations, GitHub safety checks, CI validation, and long-term ownership.',
     icon: ClipboardCheck,
+  },
+  {
+    title: 'GitHub Safety Workflow',
+    body: 'A CI workflow, local pre-push check, and documentation that enforce branch-based review, merge conflict prevention, and protected validation.',
+    icon: GitBranch,
   },
 ];
 

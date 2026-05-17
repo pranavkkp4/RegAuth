@@ -5,11 +5,11 @@ import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import Navigation from './sections/Navigation';
 import Hero from './sections/Hero';
 import EngineeringProblem from './sections/EngineeringProblem';
-import ReliabilityMetrics from './sections/ReliabilityMetrics';
-import SystemArchitecture from './sections/SystemArchitecture';
 import ProgramFocus from './sections/ProgramFocus';
+import ReliabilityMetrics from './sections/ReliabilityMetrics';
 import ClaudeAgentDesign from './sections/ClaudeAgentDesign';
 import TestIsolationStrategy from './sections/TestIsolationStrategy';
+import GitHubIntegrationSafety from './sections/GitHubIntegrationSafety';
 import Timeline from './sections/Timeline';
 import ProductionDeliverables from './sections/ProductionDeliverables';
 import Resources from './sections/Resources';
@@ -56,11 +56,11 @@ export default function App() {
       <Navigation lenisRef={lenisRef} />
       <Hero />
       <EngineeringProblem />
-      <ReliabilityMetrics />
-      <SystemArchitecture />
       <ProgramFocus />
+      <ReliabilityMetrics />
       <ClaudeAgentDesign />
       <TestIsolationStrategy />
+      <GitHubIntegrationSafety />
       <Timeline />
       <ProductionDeliverables />
       <Resources />
